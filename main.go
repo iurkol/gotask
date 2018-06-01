@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +17,19 @@ const (
 
 	INSERTQUERY = `INSERT INTO requests (ip, path, host, requested_at)
  VALUES ($1, $2, $3, $4);`
+
+	GETQUERY = `SELECT ip, path, host, requested_at
+	FROM requests
+	ORDER BY id DESC
+	LIMIT 25;`
 )
+
+type RequestInfo struct {
+	Ip        string `db:"ip"`
+	Path      string `db:"path"`
+	Host      string `db:"host"`
+	TimeStamp string `db:"requested_at"`
+}
 
 var Connection *sqlx.DB
 var err error
@@ -37,7 +50,12 @@ func init() {
 }
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("index.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { // todo: it is bulky; split to separate functions
 		timeStamp := time.Now().Format(TIMELAYOUT)
 		ip := strings.Split(r.RemoteAddr, ":")[0]
 		host := strings.Split(r.Host, ":")[0]
@@ -45,7 +63,10 @@ func main() {
 
 		Connection.MustExec(INSERTQUERY, ip, path, host, timeStamp)
 
-		w.Write([]byte("Hello World!"))
+		var result []RequestInfo
+		err = Connection.Select(&result, GETQUERY)
+
+		tmpl.Execute(w, result)
 	})
 
 	http.ListenAndServe(":9494", nil)
